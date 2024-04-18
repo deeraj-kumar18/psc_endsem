@@ -1,9 +1,10 @@
 from flask import Flask, render_template, request, redirect, url_for, flash, session
 import psycopg2
 from bcrypt import hashpw, gensalt, checkpw
+import unittest
 
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'R]<B[pnq&|i#MBQcEx%DCy-n'
+app.config['SECRET_KEY'] = 'C7mV_?<W;uT=fT%"cjM7>SrB'
 
 # Connect to PostgreSQL
 conn = psycopg2.connect(
@@ -87,7 +88,6 @@ def signup():
         password = request.form['password']
         role = request.form['role']
 
-        # Input validation
         if len(username) > 50:
             error = 'Username exceeds maximum length of 50 characters.'
             return render_template('signup.html', error=error, message=message)
@@ -105,40 +105,15 @@ def signup():
             """, (username, hashed_password.decode('utf-8'), role))
             conn.commit()
             message = 'Registration successful! Please login.'
-            print("User registered successfully.")
             return redirect(url_for('index'))
         except psycopg2.IntegrityError as e:
-            conn.rollback()  # Rollback the current transaction
+            conn.rollback()
             if "value too long for type character varying(50)" in str(e):
                 error = 'Username exceeds maximum length of 50 characters.'
             else:
-                error = 'An error occurred during registration: ' + str(e)
-            print("Error during registration:", e)
+                error = 'An error occurred during registration.'
 
     return render_template('signup.html', error=error, message=message)
-
-
-# @app.route('/login', methods=['GET', 'POST'])
-# def login():
-#     error = None
-#     if request.method == 'POST':
-#         username = request.form['username']
-#         password = request.form['password']
-
-#         cur.execute("SELECT password, role FROM users WHERE username=%s", (username,))
-#         user_data = cur.fetchone()
-
-#         if user_data and checkpw(password.encode('utf-8'), user_data[0].encode('utf-8')):
-#             session['username'] = username
-#             session['role'] = user_data[1]
-#             if user_data[1] == 'student':
-#                 return redirect(url_for('student_dashboard'))
-#             elif user_data[1] == 'teacher':
-#                 return redirect(url_for('teacher_dashboard'))
-#         else:
-#             error = 'Invalid username or password'
-
-#     return render_template('login.html', error=error)
 
 @app.route('/login', methods=['GET', 'POST'])
 def login():
@@ -159,8 +134,6 @@ def login():
                 return redirect(url_for('teacher_dashboard'))
         else:
             error = 'Invalid username or password'
-            flash(error, 'error')  # Flash the error message
-            return render_template('login.html', error=error)
 
     return render_template('login.html', error=error)
 
@@ -178,11 +151,9 @@ def student_dashboard():
 
     try:
         with conn.cursor() as cur:
-            # Fetch all courses
             cur.execute("SELECT course_name, course_description FROM courses")
             courses = cur.fetchall()
 
-            # Fetch threads related to each course
             course_threads = {}
             for course in courses:
                 cur.execute("SELECT id FROM courses WHERE course_name=%s", (course[0],))
@@ -207,11 +178,9 @@ def teacher_dashboard():
 
     try:
         with conn.cursor() as cur:
-            # Fetch all courses
             cur.execute("SELECT course_name, course_description FROM courses")
             courses = cur.fetchall()
 
-            # Fetch threads related to each course
             course_threads = {}
             for course in courses:
                 cur.execute("SELECT id FROM courses WHERE course_name=%s", (course[0],))
@@ -228,7 +197,6 @@ def teacher_dashboard():
         flash('An error occurred while fetching courses and threads.', 'error')
         return redirect('/')
 
-
 @app.route('/create_course', methods=['POST'])
 def create_course():
     if 'username' not in session:
@@ -240,21 +208,18 @@ def create_course():
 
     try:
         with conn.cursor() as cur:
-            # Fetch the teacher_id based on the teacher's username
             cur.execute("SELECT id FROM users WHERE username=%s", (session['username'],))
             teacher_id = cur.fetchone()[0]
 
-            # Insert the course into the courses table
             cur.execute("INSERT INTO courses (course_name, course_description, teacher_id) VALUES (%s, %s, %s)", 
                         (course_name, course_description, teacher_id))
             conn.commit()
             flash('Course created successfully!', 'success')
             return redirect('/teacher/dashboard')
     except Exception as e:
-        print(f"Error creating course: {e}")  # Log the error
+        print(f"Error creating course: {e}")
         flash(f'An error occurred: {e}', 'error')
         return redirect('/teacher/dashboard')
-
 
 @app.route('/enroll_course', methods=['POST'])
 def enroll_course():
@@ -266,15 +231,12 @@ def enroll_course():
 
     try:
         with conn.cursor() as cur:
-            # Fetch the course_id based on the course_name
             cur.execute("SELECT id FROM courses WHERE course_name=%s", (course_name,))
             course_id = cur.fetchone()[0]
 
-            # Fetch the student_id based on the username stored in session
             cur.execute("SELECT id FROM users WHERE username=%s", (session['username'],))
             student_id = cur.fetchone()[0]
 
-            # Insert enrollment into enrolled_courses table
             cur.execute("INSERT INTO enrolled_courses (student_id, course_id) VALUES (%s, %s)", (student_id, course_id))
             conn.commit()
 
@@ -286,7 +248,6 @@ def enroll_course():
         flash(f'An error occurred: {e}', 'error')
         return redirect(url_for('student_dashboard'))
 
-
 @app.route('/drop_course/<course_name>', methods=['POST'])
 def drop_course(course_name):
     if 'username' not in session or session['role'] != 'student':
@@ -295,15 +256,12 @@ def drop_course(course_name):
 
     try:
         with conn.cursor() as cur:
-            # Fetch the student_id based on the username stored in session
             cur.execute("SELECT id FROM users WHERE username=%s", (session['username'],))
             student_id = cur.fetchone()[0]
 
-            # Fetch the course_id based on the course name
             cur.execute("SELECT id FROM courses WHERE course_name=%s", (course_name,))
             course_id = cur.fetchone()[0]
 
-            # Delete enrollment from enrolled_courses table
             cur.execute("DELETE FROM enrolled_courses WHERE student_id=%s AND course_id=%s", (student_id, course_id))
             conn.commit()
 
@@ -314,7 +272,6 @@ def drop_course(course_name):
         print(f"Error dropping course: {e}")
         flash(f'An error occurred: {e}', 'error')
         return redirect(url_for('student_dashboard'))
-
 
 @app.route('/create_thread', methods=['POST'])
 def create_thread():
@@ -328,10 +285,8 @@ def create_thread():
     cur.execute("SELECT id FROM users WHERE username=%s", (session['username'],))
     user_id = cur.fetchone()[0]
 
-    cur.execute("""
-        INSERT INTO threads (title, content, user_id, course_id) 
-        VALUES (%s, %s, %s, %s)
-    """, (title, content, user_id, course_id))
+    cur.execute("INSERT INTO threads (title, content, user_id, course_id) VALUES (%s, %s, %s, %s)", 
+                (title, content, user_id, course_id))
     conn.commit()
 
     return redirect(url_for('course_discussion', course_name=course_name))
@@ -346,15 +301,11 @@ def create_reply(thread_id):
 
     try:
         with conn.cursor() as cur:
-            # Fetch user_id based on the username stored in session
             cur.execute("SELECT id FROM users WHERE username=%s", (session['username'],))
             user_id = cur.fetchone()[0]
 
-            # Insert reply into replies table
-            cur.execute("""
-                INSERT INTO replies (content, user_id, thread_id) 
-                VALUES (%s, %s, %s)
-            """, (content, user_id, thread_id))
+            cur.execute("INSERT INTO replies (content, user_id, thread_id) VALUES (%s, %s, %s)", 
+                        (content, user_id, thread_id))
             conn.commit()
 
             flash('Reply added successfully!', 'success')
@@ -365,7 +316,6 @@ def create_reply(thread_id):
         flash(f'An error occurred: {e}', 'error')
         return redirect(url_for('view_thread', thread_id=thread_id))
 
-
 @app.route('/course_discussion/<course_name>')
 def course_discussion(course_name):
     if 'username' not in session:
@@ -374,11 +324,9 @@ def course_discussion(course_name):
 
     try:
         with conn.cursor() as cur:
-            # Fetch course_id based on the course_name
             cur.execute("SELECT id FROM courses WHERE course_name=%s", (course_name,))
             course_id = cur.fetchone()[0]
 
-            # Fetch threads related to the course
             cur.execute("SELECT * FROM threads WHERE course_id=%s", (course_id,))
             threads = cur.fetchall()
 
@@ -388,27 +336,74 @@ def course_discussion(course_name):
         flash('An error occurred while fetching course discussion.', 'error')
         return redirect(url_for('index'))
 
-
 @app.route('/view_thread/<int:thread_id>')
 def view_thread(thread_id):
     cur.execute("SELECT * FROM threads WHERE id=%s", (thread_id,))
     thread = cur.fetchone()
 
-    cur.execute("""
-        SELECT replies.id, replies.content, users.username 
-        FROM replies JOIN users ON replies.user_id = users.id
-        WHERE replies.thread_id=%s
-    """, (thread_id,))
+    cur.execute("SELECT replies.id, replies.content, users.username FROM replies JOIN users ON replies.user_id = users.id WHERE replies.thread_id=%s", (thread_id,))
     replies = cur.fetchall()
 
     return render_template('view_thread.html', thread=thread, replies=replies)
 
-# Check database connection
-try:
-    cur.execute("SELECT 1")
-    print("Database connection established successfully.")
-except psycopg2.Error as e:
-    print("Unable to connect to the database:", e)
+class FlaskTestCase(unittest.TestCase):
+
+    def setUp(self):
+        self.app = app.test_client()
+        self.app.testing = True
+
+        with conn.cursor() as cur:
+            cur.execute("INSERT INTO users (username, password, role) VALUES (%s, %s, %s)", 
+                        ('test_user', 'hashed_password', 'student'))
+            conn.commit()
+
+    def tearDown(self):
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM users WHERE username=%s", ('test_user',))
+            conn.commit()
+
+    def test_index(self):
+        response = self.app.get('/')
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b'Login', response.data)
+
+    def test_signup(self):
+        response = self.app.post('/signup', data=dict(
+            username='test_user_2',
+            password='password',
+            role='student'
+        ), follow_redirects=True)
+        self.assertIn(b'Registration successful! Please login.', response.data)
+
+    def test_login(self):
+        response = self.app.post('/login', data=dict(
+            username='test_user',
+            password='hashed_password'
+        ), follow_redirects=True)
+        self.assertIn(b'Welcome', response.data)
+
+    def test_create_course(self):
+        with self.app.session_transaction() as session:
+            session['username'] = 'test_user'
+            session['role'] = 'teacher'
+
+        response = self.app.post('/create_course', data=dict(
+            course_name='Test Course',
+            course_description='Test Description'
+        ), follow_redirects=True)
+        self.assertIn(b'Course created successfully!', response.data)
+
+    def test_create_thread(self):
+        with self.app.session_transaction() as session:
+            session['username'] = 'test_user'
+            session['role'] = 'student'
+
+        response = self.app.post('/create_thread', data=dict(
+            title='Test Thread',
+            content='Test Content',
+            course_name='Test Course'
+        ), follow_redirects=True)
+        self.assertIn(b'Test Thread', response.data)
 
 if __name__ == '__main__':
     app.run(debug=True)
